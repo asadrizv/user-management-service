@@ -1,0 +1,54 @@
+version: '3'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.9.11
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_VHOST: my-vhost
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: users
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  migrate:
+    image: migrate/migrate
+    command: [ "-path", "/migrations",
+             "-database", "postgres://user:password@postgres:5432/users?sslmode=disable", "up" ]
+    depends_on:
+      - postgres
+    volumes:
+      - ./internal/infrastructure/database/postgresql/migrations:/migrations
+
+  app:
+    build: .
+    environment:
+      DATABASE_CONNECTION_STRING: postgres://user:password@postgres:5432/users?sslmode=disable
+      AMQP_URL: "amqp://user:password@rabbitmq:5672/my-vhost"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - migrate
+      - postgres
+      - rabbitmq
+    restart: on-failure
+
+
+volumes:
+  postgres-data:
